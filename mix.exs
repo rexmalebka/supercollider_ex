@@ -8,10 +8,14 @@ defmodule Supercollider.MixProject do
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-
+      package: package(),
+      description: "Elixir implementation of Supercollider client.",
+      source_url: "https://github.com/rexmalebka/supercollider_ex",
       docs: [
         authors: ["rexmalebka"],
         deps: [OSC: "https://hexdocs.pm/osc/api-reference.html"],
+        main: "/readme",
+        api_reference: false,
         extras: [
           "README.md"
         ],
@@ -52,4 +56,5 @@ defmodule Supercollider.MixProject do
       name: "supercollider",
 
     ]
+  end
 end

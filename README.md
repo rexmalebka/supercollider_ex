@@ -4,7 +4,7 @@ Elixir implementation of Supercollider client.
 
 ## Installation
 
-add `supercollider` to your list of dependencies in `mix.exs`:
+1. add `supercollider` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
@@ -14,6 +14,25 @@ def deps do
 end
 ```
 
+2. get deps
+
+```bash
+$ mix deps.get 
+```
+
+3. compile
+
+```bash
+$ mix compile
+```
+
+4. gen docs with:
+
+
+```bash
+$ mix docs
+```
+
 ## Usage
 
 
@@ -21,13 +40,13 @@ end
  
 first, make sure Supercollider Server it's running:
 
-1.- Run sclang process or scide.
+1. Run sclang process or scide.
 
 ```bash
 $ sclang -u 57110 # set 57110 port
 ```
 
-2.- run this lines, to boot the server.
+2. run this lines, to boot the server.
 
 ```supercollider
 s.options.maxLogins = 8; // set this to allow register for notifications.
@@ -42,7 +61,7 @@ s.boot;
 **Start Elixir implementation**
 
 
-1.- you can use `Supercollider.Server.start_link/1` into children supervisor:
+1. you can use `Supercollider.Server.start_link/1` into children supervisor:
 
 ```elixir
 children = [
@@ -53,13 +72,13 @@ children = [
 ]
 ```
 
-2.- alternatively you can run:
+2. alternatively you can run:
 
 ```elixir
 Supercollider.Server.start_link([])
 ```
 
-3.- you could also let Elixir spawn Supercollider process: 
+3. you could also let Elixir spawn Supercollider process: 
 
 ```elixir
 Supercollider.Server.boot()
@@ -123,4 +142,22 @@ iex(5)> Supercollider.Server.quit()
 :ok
 
 ```
+
+
+## TODO
+
+- create documentation
+- publish on hex.pmm
+- `Supercollider.Server.boot()` callback
+- test inside a supervisor
+- make tests
+- check lacking Server commands
+- generate Synthdef with elixir
+- make an proof of concept video
+
+## References
+
+[Server Command Reference](https://doc.sccode.org/Reference/Server-Command-Reference.html)
+
+[Synth definition file format](http://doc.sccode.org/Reference/Synth-Definition-File-Format.html)
 
