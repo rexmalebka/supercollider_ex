@@ -47,7 +47,8 @@ defmodule Supercollider.MixProject do
       {:osc, "~> 0.1.2"},
       # {:osc, git: "https://github.com/erlsci/osc", tag: "2.1.0"}
       {:earmark, "~> 1.2", only: :dev},
-      {:ex_doc, "~> 0.19", only: :dev}
+      {:ex_doc, "~> 0.19", only: :dev},
+      {:credo, "~> 1.6", only: [:dev, :test], runtime: false}
     ]
   end
 
