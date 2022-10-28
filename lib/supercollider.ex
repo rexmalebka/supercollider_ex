@@ -1,4 +1,16 @@
-defmodule SCVersion do
+defmodule SC.Config do
+  @moduledoc """
+  Supercollider Configuration.
+  """
+
+  defstruct [
+    address: "127.0.0.1",
+    port: 57_110,
+    client_port: 0
+  ]
+end
+
+defmodule SC.Version do
   @moduledoc """
   Version info (retrieved from https://doc.sccode.org/Reference/Server-Command-Reference.html#/version)
   """
@@ -34,7 +46,7 @@ defmodule SCVersion do
   defstruct [:name, :major, :minor, :patch_name, :git_branch, :hash]
 end
 
-defmodule SCStatus do
+defmodule SC.Status do
   @moduledoc """
   Status info (retrieved from https://doc.sccode.org/Reference/Server-Command-Reference.html#/status)
   """
@@ -96,43 +108,53 @@ defmodule Supercollider.Server do
   use GenServer
 
   def start_link([]) do
-    GenServer.start_link(__MODULE__, [], name: :supercollider_server)
+    address = Application.get_env(:supercollider, :address)
+    port = Application.get_env(:supercollider, :port)
+    client_port = Application.get_env(:supercollider, :client_port)
+
+    GenServer.start_link(__MODULE__, {address, port, client_port}, name: :supercollider_server)
+  end
+  
+  def start_link([config]) when is_list(config) do
+    address = case is_bitstring(config[:address]) do
+      true -> config[:address]
+      false -> Application.get_env(:supercollider, :address, "127.0.0.1")
+    end
+
+    port = case is_integer(config[:port]) do
+      true -> config[:port]
+      false -> Application.get_env(:supercollider, :port, 57_110)
+    end
+
+    client_port = case is_integer(config[:client_port]) do
+      true -> config[:client_port]
+      false -> Application.get_env(:supercollider, :client_port, 0)
+    end
+
+
+    GenServer.start_link(__MODULE__, {address, port, client_port}, name: :supercollider_server)
   end
 
-  @doc false
-  def start_link([:sclang]) do
-    GenServer.start_link(__MODULE__, [], name: :supercollider_server)
-  end
-
-  @doc "boots genserver with a spawned port connection to sclang"
-  def boot do
-    start_link([:sclang])
-  end
 
   @impl true
-  def init([]) do
-    {:ok, socket} = :gen_udp.open(57200, [:binary, active: false])
-    {:ok, notification_socket} = :gen_udp.open(57300, [:binary, active: true])
+  def init({
+    address,
+    port,
+    client_port
+  }) when is_bitstring(address) and is_integer(port) and is_integer(client_port) do
 
-    id = :rand.uniform(500 + 2000)
+    {:ok, socket} = :gen_udp.open(client_port, [:binary, active: false])
+    {:ok, address} = :inet_parse.address(String.to_charlist(address))
 
     state = %{
       socket: socket,
-      notification_socket: notification_socket,
-      id: id
+      config: %SC.Config{
+        address: address,
+        port: port,
+        client_port: client_port
+      }
     }
 
-    # start receiving notifications
-    msg = %OSC.Message{
-      address: "/notify",
-      arguments: [1, id]
-    }
-
-    {:ok, osc_packet} = OSC.encode(msg)
-    :gen_udp.send(notification_socket, {127, 0, 0, 1}, 57110, osc_packet)
-
-    # sclang: Port.open({:spawn, "sclang -u 57110"})
-    # Port.command
     {:ok, state}
   end
 
@@ -140,7 +162,12 @@ defmodule Supercollider.Server do
   def handle_call({:send, osc_data}, _From, state) do
     {:ok, osc_packet} = OSC.encode(osc_data)
 
-    :gen_udp.send(state.socket, {127, 0, 0, 1}, 57110, osc_packet)
+    :gen_udp.send(
+      state.socket,
+      state.config.address,
+      state.config.port,
+      osc_packet
+    )
 
     msg =
       case :gen_udp.recv(state.socket, 0, 3_000) do
@@ -157,6 +184,11 @@ defmodule Supercollider.Server do
   end
 
   @impl true
+  def handle_call({:get, :config}, _From, state) do
+    {:reply, state.config, state}
+  end
+
+  @impl true
   def handle_call(msg, _From, state) do
     IO.puts("call: #{inspect(msg)}")
     {:reply, msg, state}
@@ -166,13 +198,18 @@ defmodule Supercollider.Server do
   def handle_cast({:send, osc_data}, state) do
     {:ok, osc_packet} = OSC.encode(osc_data)
 
-    :gen_udp.send(state.socket, {127, 0, 0, 1}, 57110, osc_packet)
+    :gen_udp.send(
+      state.socket,
+      state.config.address,
+      state.config.port,
+      osc_packet
+    )
 
     {:noreply, state}
   end
 
   @impl true
-  def handle_cast(_Msg, state) do
+  def handle_cast(_msg, state) do
     {:noreply, state}
   end
 
@@ -184,7 +221,7 @@ defmodule Supercollider.Server do
   end
 
   @impl true
-  def handle_info(_Msg, state) do
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 
@@ -207,41 +244,28 @@ defmodule Supercollider.Server do
     cast_send(["/dumpOSC", dump_code])
   end
 
-  @doc "retrieve Supercollider Status."
-  @spec status() :: SCStatus.t()
-  def status do
-    response =
-      case call_send(["/status"]) do
-        {:ok, osc_packet} ->
-          args = Enum.at(osc_packet.contents, 0).arguments
+end
 
-          %SCStatus{
-            ugens: Enum.at(args, 1),
-            synths: Enum.at(args, 2),
-            groups: Enum.at(args, 3),
-            synthdefs: Enum.at(args, 4),
-            avg_cpu: Enum.at(args, 5),
-            peak_cpu: Enum.at(args, 6),
-            nominal_samplerate: Enum.at(args, 7),
-            actual_samplerate: Enum.at(args, 8)
-          }
 
-        error ->
-          error
-      end
+defmodule Supercollider do
+  @moduledoc """
+  Supercollider API.
+  """
 
-    response
+  @doc "boots genserver with a spawned port connection to sclang"
+  def boot do
+    Supercollider.Supervisor.start_link([boot: true])
   end
 
   @doc "retrieve Supercollider version."
-  @spec version() :: SCVersion.t()
+  @spec version() :: SC.Version.t()
   def version do
     response =
-      case call_send(["/version"]) do
+      case Supercollider.Server.call_send(["/version"]) do
         {:ok, osc_packet} ->
           args = Enum.at(osc_packet.contents, 0).arguments
 
-          %SCVersion{
+          %SC.Version{
             name: Enum.at(args, 0),
             major: Enum.at(args, 1),
             minor: Enum.at(args, 2),
@@ -261,11 +285,44 @@ defmodule Supercollider.Server do
   @spec quit() :: :ok | {:error, :timeout}
   def quit do
     response =
-      case call_send(["/quit"]) do
+      case Supercollider.Server.call_send(["/quit"]) do
         {:ok, _osc_packet} -> :ok
         error -> error
       end
 
     response
   end
+
+  @doc "retrieve Supercollider initial config."
+  @spec config() :: SC.Config.t()
+  def config do
+    GenServer.call(:supercollider_server, {:get, :config})
+  end
+
+  @doc "retrieve Supercollider Status."
+  @spec status() :: SC.Status.t()
+  def status do
+    response =
+      case Supercollider.Server.call_send(["/status"]) do
+        {:ok, osc_packet} ->
+          args = Enum.at(osc_packet.contents, 0).arguments
+
+          %SC.Status{
+            ugens: Enum.at(args, 1),
+            synths: Enum.at(args, 2),
+            groups: Enum.at(args, 3),
+            synthdefs: Enum.at(args, 4),
+            avg_cpu: Enum.at(args, 5),
+            peak_cpu: Enum.at(args, 6),
+            nominal_samplerate: Enum.at(args, 7),
+            actual_samplerate: Enum.at(args, 8)
+          }
+
+        error ->
+          error
+      end
+
+    response
+  end
+
 end
